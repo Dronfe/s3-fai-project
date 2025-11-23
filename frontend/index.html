@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Engine</title>
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Chessboard.js CSS -->
+    <link rel="stylesheet" href="lib/chessboard-1.0.0.min.css">
+    
+    <!-- Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- Sidebar (Minimal) -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <span class="material-icons-round">smart_toy</span>
+            </div>
+            
+            <nav class="nav-controls">
+                <button id="newGameTrigger" class="icon-btn" title="New Game">
+                    <span class="material-icons-round">add_circle</span>
+                </button>
+                <button id="flipBoardBtn" class="icon-btn" title="Flip Board">
+                    <span class="material-icons-round">cached</span>
+                </button>
+                <button id="settingsBtn" class="icon-btn" title="Settings">
+                    <span class="material-icons-round">settings</span>
+                </button>
+            </nav>
+
+            <div class="bottom-controls">
+                <button id="themeToggle" class="icon-btn" title="Toggle Theme">
+                    <span class="material-icons-round">dark_mode</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Board Area -->
+        <main class="main-content">
+            <div class="board-layout">
+                <!-- Player Info Top -->
+                <div class="player-info top">
+                    <div class="avatar">
+                        <span class="material-icons-round">computer</span>
+                    </div>
+                    <div class="details">
+                        <span class="name">Engine</span>
+                        <span id="engineStatus" class="status">Waiting</span>
+                    </div>
+                </div>
+
+                <div class="board-wrapper">
+                    <div id="board"></div>
+                    <!-- Eval Bar (Integrated) -->
+                    <div class="eval-bar-vertical">
+                        <div id="eval-fill" class="eval-fill"></div>
+                    </div>
+                </div>
+
+                <!-- Player Info Bottom -->
+                <div class="player-info bottom">
+                    <div class="avatar">
+                        <span class="material-icons-round">person</span>
+                    </div>
+                    <div class="details">
+                        <span class="name">You</span>
+                        <span id="playerStatus" class="status">Your Turn</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Panel: Moves -->
+        <aside class="right-panel">
+            <div class="panel-header">
+                <h3>Move History</h3>
+            </div>
+            <div id="pgn-container" class="pgn-list">
+                <div class="pgn-placeholder">Game started</div>
+            </div>
+            
+            <div class="captured-area">
+                <div id="captured-white" class="captured-row"></div>
+                <div id="captured-black" class="captured-row"></div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Modals -->
+    
+    <!-- New Game Modal -->
+    <div id="newGameModal" class="modal">
+        <div class="modal-content">
+            <h2>Start New Game</h2>
+            
+            <div class="form-group">
+                <label>Play As</label>
+                <div class="radio-group">
+                    <label class="radio-card">
+                        <input type="radio" name="newGameSide" value="white" checked>
+                        <span class="card-content">
+                            <span class="material-icons-round">person</span>
+                            White
+                        </span>
+                    </label>
+                    <label class="radio-card">
+                        <input type="radio" name="newGameSide" value="black">
+                        <span class="card-content">
+                            <span class="material-icons-round">person_outline</span>
+                            Black
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Difficulty (Depth)</label>
+                <div class="slider-container">
+                    <input type="range" id="depthRange" min="1" max="20" value="10" class="slider">
+                    <span id="depthValue">10</span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Mode</label>
+                <select id="newGameMode" class="select-input">
+                    <option value="play">Play vs Bot</option>
+                    <option value="analysis">Analysis Board</option>
+                </select>
+            </div>
+
+            <div class="modal-actions">
+                <button id="cancelNewGame" class="btn text-btn">Cancel</button>
+                <button id="confirmNewGame" class="btn primary-btn">Start Game</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="gameOverModal" class="modal hidden">
+        <div class="modal-content text-center">
+            <h2 id="gameOverTitle">Checkmate!</h2>
+            <p id="gameOverMessage">White wins by checkmate.</p>
+            <button id="closeGameOver" class="btn primary-btn">Close</button>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    <script src="lib/chessboard-1.0.0.js"></script>
+    <script src="lib/chess.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
