@@ -1,91 +1,103 @@
-# nn/evaluate.py
-# Exposes nn_evaluate(board) -> int (centipawns), blends NN + classical eval.
 import os
+import time
+import logging
+from pathlib import Path
 from typing import Optional
+import shutil
 
-# lazy import torch/model to avoid hard dependency at Phase-2 runtime
-try:
-    from .encode import encode_board
-    from .model import load_model
-    TORCH_AVAILABLE = True
-except Exception:
-    TORCH_AVAILABLE = False
+from configs.training_config import *
+from training.replay_buffer import ReplayBuffer
+from training.selfplay import generate_selfplay_positions
+from training.trainer import Trainer
+from training.evaluator import evaluate_models
 
-# model path & device via env vars (optional)
-MODEL_PATH = os.environ.get('CHESS_NN_MODEL', None)
-DEVICE = os.environ.get('CHESS_NN_DEVICE', 'cpu')
+from neural_network.model import SmallEvalNet, load_model
 
-# lazy-loaded model reference
-_MODEL = None
-def _get_model():
-    global _MODEL
-    if _MODEL is not None:
-        return _MODEL
-    if not TORCH_AVAILABLE:
-        _MODEL = None
-        return None
-    try:
-        _MODEL = load_model(MODEL_PATH, device=DEVICE)
-        return _MODEL
-    except Exception:
-        _MODEL = None
-        return None
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
-def nn_raw_eval(board) -> float:
-    """
-    Run the NN and return a float score (centipawns).
-    Raises RuntimeError if model not available.
-    """
-    model = _get_model()
-    if model is None:
-        raise RuntimeError("NN model not available (torch or model failed to load).")
-    import torch
-    device = DEVICE
-    tensor = encode_board(board, device=device)  # shape (1,16,8,8)
-    with torch.no_grad():
-        out = model(tensor)  # shape (1,) or scalar
-        val = float(out.detach().cpu().item())
-    return val
+class TrainingPipeline:
+    def __init__(self, config_module=None):
+        # load configuration constants from module-level names
+        self.cfg = globals()
+        # ensure checkpoint dir exists
+        Path(MODEL_SAVE_DIR).mkdir(parents=True, exist_ok=True)
+        # replay buffer
+        self.replay = ReplayBuffer(capacity=MAX_REPLAY_SIZE)
+        # iteration counter
+        self.iteration_idx = 0
+        # track best model path
+        self.best_model_path = os.path.join(MODEL_SAVE_DIR, "best_model.pt")
+        self.latest_model_path = os.path.join(MODEL_SAVE_DIR, "latest_model.pt")
+        # create initial model if not present
+        if not os.path.exists(self.latest_model_path):
+            logger.info("No existing latest model found — creating fresh model.")
+            # save initial model
+            import torch
+            # also seed best_model with same
+            shutil.copy(self.latest_model_path, self.best_model_path)
 
-def nn_evaluate(board) -> int:
-    """
-    Blended evaluation: 0.7 * NN + 0.3 * classical_eval(board)
-    Returns int centipawns. Falls back safely to classical eval if NN is unavailable.
-    """
-    # lazy import classical eval to avoid circular imports if search imports nn
-    try:
-        from search.minimax import evaluate_simple
-    except Exception:
-        # fallback: minimal material-only evaluator if classical evaluator missing
-        def evaluate_simple(b):
-            s = 0
-            try:
-                for color in (0,1):
-                    sign = 1 if color == 0 else -1
-                    for p in range(6):
-                        bb = b.bb[color][p]
-                        while bb:
-                            lsb = bb & -bb
-                            sq = lsb.bit_length() - 1
-                            bb &= bb - 1
-                            # basic values
-                            vals = [100, 320, 330, 500, 900, 20000]
-                            s += sign * vals[p]
-            except Exception:
-                s = 0
-            return s
+    def iteration(self):
+        self.iteration_idx += 1
+        it = self.iteration_idx
+        logger.info("=== Starting training iteration %d ===", it)
 
-    classical_score = evaluate_simple(board)
+        # 1) Self-play generation
+        games_to_gen = SELFPLAY_GAMES_PER_ITER
+        logger.info("Generating %d self-play games (depths %s, noise=%.3f)...", games_to_gen, str(SEARCH_DEPTH_SELFPLAY), EXPLORATION_NOISE)
+        # generate_selfplay_positions pushes encoded positions into replay_buffer
+        generate_selfplay_positions(n_games=games_to_gen, replay_buffer=self.replay, depths=SEARCH_DEPTH_SELFPLAY, randomness=EXPLORATION_NOISE)
 
-    nn_score = None
-    try:
-        if TORCH_AVAILABLE:
-            nn_score = nn_raw_eval(board)
-    except Exception:
-        nn_score = None
+        # Save replay buffer snapshot
+        try:
+            self.replay.save(replay_path)
+        except Exception as e:
+            logger.exception("Failed to save replay buffer: %s", e)
 
-    if nn_score is None:
-        # NN failed or not available -> return classical score
-        return int(round(classical_score))
-    blended = 0.7 * float(nn_score) + 0.3 * float(classical_score)
-    return int(round(blended))
+        # 2) Training
+        trainer = Trainer(self.replay, device=DEVICE)
+        candidate_path = os.path.join(MODEL_SAVE_DIR, f"candidate_iter_{it}.pt")
+        trainer.train_epoch(batch_size=BATCH_SIZE, iterations=TRAIN_ITERS_PER_EPOCH, save_path=candidate_path)
+
+        # 3) Evaluation (model vs model)
+        old_model = self.latest_model_path
+        new_model = candidate_path
+        score_old, score_new, elo_diff = evaluate_models(old_model, new_model, EVAL_GAMES, EVAL_SEARCH_DEPTH)
+
+        promoted = False
+        if elo_diff >= ELO_THRESHOLD:
+            # promote
+            promoted = True
+            # update best/latest copies
+            shutil.copy(new_model, self.latest_model_path)
+            shutil.copy(new_model, self.best_model_path)
+            logger.info("Promoted candidate to latest and best (elo_diff=%.2f >= %d).", elo_diff, ELO_THRESHOLD)
+        else:
+            # reject candidate (keep for records)
+            rejected_path = os.path.join(MODEL_SAVE_DIR, f"rejected_iter_{it}.pt")
+            shutil.copy(new_model, rejected_path)
+            logger.info("Candidate rejected (elo_diff=%.2f < %d). Saved to %s", elo_diff, ELO_THRESHOLD, rejected_path)
+
+        # logging summary
+        logger.info("Iteration %d summary: games=%d samples=%d elo_diff=%.2f promoted=%s", it, games_to_gen, len(self.replay), elo_diff, promoted)
+        return {
+            "iteration": it,
+            "games_generated": games_to_gen,
+            "replay_size": len(self.replay),
+            "elo_diff": elo_diff,
+            "promoted": promoted,
+            "candidate_path": candidate_path
+        }
+
+    def run_forever(self, sleep_between_iters: int = 5):
+        try:
+            while True:
+                info = self.iteration()
+                logger.info("Iteration finished: %s", info)
+                time.sleep(sleep_between_iters)
+        except KeyboardInterrupt:
+            logger.info("Pipeline interrupted by user. Exiting cleanly.")
+
+if __name__ == "__main__":
+    p = TrainingPipeline()
+    p.run_forever()

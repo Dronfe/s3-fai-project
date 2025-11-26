@@ -5,5 +5,10 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "flask>=3.1.2",
+    "flask-cors>=6.0.1",
+    "numpy>=2.3.5",
+    "python-dotenv>=1.2.1",
+    "sqlalchemy>=2.0.44",
     "torch>=2.9.1",
 ]

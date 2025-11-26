@@ -60,7 +60,7 @@ pst_sample={
 } 
 
 
-def evaluate_sample(board):
+def evaluate_simple(board):
     total=0
     
     for color in (white,black):
@@ -100,7 +100,7 @@ class SearchContext:
 
 def quiescence(board,alpha,beta,ctx,ply=0):
     ctx.nodes+=1
-    stand_pat=evaluate_sample(board)
+    stand_pat=evaluate_simple(board)
     if stand_pat>=beta:
         return beta 
     if alpha <stand_pat:
@@ -151,11 +151,16 @@ def negamax(board,depth,alpha,beta,ctx,ply=0):
             return entry.score,entry.best_move 
         
         
-    if depth==0:
-        
-        # quiescence search
-        score=quiescence(board,alpha,beta,ctx,ply)
-        return score,None 
+    if depth == 0:
+        try:
+            # blended NN + classical eval
+            from neural_network.evaluate import nn_evaluate
+            score = nn_evaluate(board)
+        except Exception:
+        # fallback to quiescence/classical if something goes wrong
+            score = quiescence(board, alpha, beta, ctx, ply)
+        return score, None
+
     
     best_move=None
     best_score=-math.inf 

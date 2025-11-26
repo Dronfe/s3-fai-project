@@ -90,7 +90,7 @@ class Board:
     def compute_key(self):
         k=0
         for c in (white,black):
-            for p in range(0):
+            for p in range(6):
                 bbp=self.bb[c][p]
                 while bbp:
                     bbp,sq=pop_lsb(bbp)
@@ -134,7 +134,7 @@ class Board:
         
         # Remove the piece that is to be moved from from square 
         
-        self.bb[c][p]=clear_bit(self.bb[c][p],frm),
+        self.bb[c][p]=clear_bit(self.bb[c][p],frm)
         
         # Handle pawn captures
         if m.is_en_passant:
