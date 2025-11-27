@@ -9,8 +9,8 @@ def sq_name(idx):
     return files[idx%8]+ranks[idx//8]
 
 def sq_index(name):
-    file=files.index(name[0])
-    rank=ranks.index(name[0]) 
+    file = files.index(name[0])
+    rank = ranks.index(name[1])
     return rank*8 + file 
 
 # Bitboard operations 

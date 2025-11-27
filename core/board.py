@@ -1,28 +1,6 @@
-from core.bitboard import files,ranks,white,black,pawn,knight,bishop,rook,queen,king
-from core.bitboard import sq_name,sq_index,bit,set_bit,clear_bit,pop_lsb 
+from core.bitboard import white,black,pawn,knight,bishop,rook,queen,king
+from core.bitboard import sq_name,sq_index,bit,set_bit,clear_bit,pop_lsb, knight_attacks, king_attacks
 from core.zobrist import Zobrist
-
-KNIGHT_ATTACKS = [0] * 64
-KING_ATTACKS = [0] * 64
-
-def init_tables():
-    for sq in range(64):
-        f = sq % 8
-        r = sq // 8
-        attacks = 0
-        for df, dr in [(-2,-1),(-2,1),(2,-1),(2,1),(-1,-2),(-1,2),(1,-2),(1,2)]:
-            nf, nr = f + df, r + dr
-            if 0 <= nf < 8 and 0 <= nr < 8:
-                attacks |= (1 << (nr*8 + nf))
-        KNIGHT_ATTACKS[sq] = attacks
-        attacks = 0
-        for df, dr in [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]:
-            nf, nr = f + df, r + dr
-            if 0 <= nf < 8 and 0 <= nr < 8:
-                attacks |= (1 << (nr*8 + nf))
-        KING_ATTACKS[sq] = attacks
-
-init_tables() 
 
 class Board:
     def __init__(self, fen=None):
@@ -90,7 +68,7 @@ class Board:
     def compute_key(self):
         k=0
         for c in (white,black):
-            for p in range(0):
+            for p in range(6):
                 bbp=self.bb[c][p]
                 while bbp:
                     bbp,sq=pop_lsb(bbp)
@@ -133,12 +111,16 @@ class Board:
         c,p=m.piece
         
         # Remove the piece that is to be moved from from square 
+        self.bb[c][p]=clear_bit(self.bb[c][p],frm)
         
-        self.bb[c][p]=clear_bit(self.bb[c][p],frm),
+        # Place the piece on the destination square
+        if m.promotion:
+            self.bb[c][m.promotion] = set_bit(self.bb[c][m.promotion], to)
+        else:
+            self.bb[c][p] = set_bit(self.bb[c][p], to)
         
         # Handle pawn captures
         if m.is_en_passant:
-            
             cap_sq=to +(8 if c==black else -8)
             self.bb[1-c][pawn]=clear_bit(self.bb[1-c][pawn],cap_sq)
         elif m.capture:
@@ -263,11 +245,11 @@ class Board:
                 return True
             
         # Knight attacks
-        if KNIGHT_ATTACKS[sq] & self.bb[by][knight]:
+        if knight_attacks[sq] & self.bb[by][knight]:
             return True
         
         # king
-        if KING_ATTACKS[sq] & self.bb[by][king]:
+        if king_attacks[sq] & self.bb[by][king]:
             return True 
         
         
@@ -306,3 +288,42 @@ class Board:
                         return True
                     break
         return False
+
+    def fen(self):
+        # Generate FEN string from board state
+        fen = ""
+        for r in range(7, -1, -1):
+            empty = 0
+            for f in range(8):
+                sq = r * 8 + f
+                piece = self.piece_at(sq)
+                if piece:
+                    if empty > 0:
+                        fen += str(empty)
+                        empty = 0
+                    c, p = piece
+                    char = "PNBRQK"[p] if c == white else "pnbrqk"[p]
+                    fen += char
+                else:
+                    empty += 1
+            if empty > 0:
+                fen += str(empty)
+            if r > 0:
+                fen += "/"
+        
+        fen += " " + ("w" if self.side_to_move == white else "b")
+        
+        cas = ""
+        if self.castling & 1: cas += "K"
+        if self.castling & 2: cas += "Q"
+        if self.castling & 4: cas += "k"
+        if self.castling & 8: cas += "q"
+        fen += " " + (cas if cas else "-")
+        
+        if self.en_passant is not None:
+            fen += " " + sq_name(self.en_passant)
+        else:
+            fen += " -"
+            
+        fen += f" {self.halfmove} {self.fullmove}"
+        return fen
