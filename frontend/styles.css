@@ -269,34 +269,35 @@ body {
 }
 
 /* Themes - Overriding Chessboard.js default colors */
-/* Classic (Green/White default) - No change needed or explicit */
+
+/* Classic (Green/White) */
+#board.theme-classic .white-1e1d7 {
+    background-color: #eeeed2 !important;
+}
+#board.theme-classic .black-3c85d {
+    background-color: #769656 !important;
+}
 
 /* Blue Theme */
-.theme-blue .white-1e1d7 {
-    background-color: #dee3e6;
-    color: #dee3e6;
+#board.theme-blue .white-1e1d7 {
+    background-color: #dee3e6 !important;
 }
-.theme-blue .black-3c85d {
-    background-color: #8ca2ad;
-    color: #8ca2ad;
+#board.theme-blue .black-3c85d {
+    background-color: #8ca2ad !important;
 }
 
 /* Dark Theme */
-.theme-dark .white-1e1d7 {
-    background-color: #a9a9a9;
-    color: #a9a9a9;
+#board.theme-dark .white-1e1d7 {
+    background-color: #b0b0b0 !important;
 }
-.theme-dark .black-3c85d {
-    background-color: #555555;
-    color: #555555;
+#board.theme-dark .black-3c85d {
+    background-color: #555555 !important;
 }
 
 /* Wood Theme */
-.theme-wood .white-1e1d7 {
-    background-color: #e8c39c;
-    color: #e8c39c;
+#board.theme-wood .white-1e1d7 {
+    background-color: #e8c39c !important;
 }
-.theme-wood .black-3c85d {
-    background-color: #a67c52;
-    color: #a67c52;
+#board.theme-wood .black-3c85d {
+    background-color: #a67c52 !important;
 }

@@ -12,7 +12,7 @@ var $engineStatus = $('#engine-status');
 // API Base URL (assuming backend runs on same host/port or configured proxy)
 // If opening index.html directly, we need absolute URL. 
 // Assuming backend is localhost:5000 for now.
-const API_BASE = 'http://localhost:5000';
+const API_BASE = '';
 
 // --- Initialization ---
 
@@ -22,15 +22,21 @@ function onDragStart (source, piece, position, orientation) {
 
   // only pick up pieces for the side to move
   if (!isAnalysis) {
-      if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
-          (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
-        return false;
+      // Get selected side
+      const userSide = $('#side-select').val(); // 'white' or 'black'
+      const turn = game.turn(); // 'w' or 'b'
+      
+      // Prevent moving if it's not user's turn
+      if ((userSide === 'white' && turn === 'b') || 
+          (userSide === 'black' && turn === 'w')) {
+          return false;
       }
-      // If playing as white (default), prevent moving black
-      // For now assume user plays White vs Bot Black unless flipped?
-      // Actually let's allow user to play whatever side is to move if it matches orientation?
-      // Simplest: User plays White. Bot plays Black.
-      if (game.turn() === 'b') return false; 
+      
+      // Prevent moving opponent's pieces even if it's their turn (shouldn't happen in normal play but good safety)
+      if ((userSide === 'white' && piece.search(/^b/) !== -1) ||
+          (userSide === 'black' && piece.search(/^w/) !== -1)) {
+          return false;
+      }
   }
 }
 
@@ -65,7 +71,8 @@ var config = {
   position: 'start',
   onDragStart: onDragStart,
   onDrop: onDrop,
-  onSnapEnd: onSnapEnd
+  onSnapEnd: onSnapEnd,
+  pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
 };
 
 board = Chessboard('board', config);
@@ -82,6 +89,17 @@ async function startNewGame() {
             gameId = data.game_id;
             game.load(data.fen);
             board.position(data.fen);
+            
+            // Handle Side Selection
+            const userSide = $('#side-select').val();
+            if (userSide === 'black') {
+                board.orientation('black');
+                makeBotMove(); // Bot (White) moves first
+            } else {
+                board.orientation('white');
+            }
+            orientation = userSide;
+            
             updateStatus();
             updateMoveList();
             updateCaptures();
@@ -111,8 +129,15 @@ async function makeUserMove(uciMove) {
         
         if (data.ok) {
             // Backend accepted move.
-            // If not analysis mode, trigger bot move
-            if (!isAnalysis && !game.game_over()) {
+            // Trigger bot move if not in analysis mode and game isn't over
+            // Bot should move if it's now the bot's turn
+            const userSide = $('#side-select').val(); // 'white' or 'black'
+            const currentTurn = game.turn(); // 'w' or 'b' after our move
+            
+            const isBotTurn = (userSide === 'white' && currentTurn === 'b') || 
+                              (userSide === 'black' && currentTurn === 'w');
+            
+            if (!isAnalysis && !game.game_over() && isBotTurn) {
                 makeBotMove();
             }
         } else {
@@ -223,22 +248,41 @@ function updateMoveList() {
 }
 
 function updateCaptures() {
-    // Simple diff approach: compare current board counts to initial
-    // Or iterate history to find captures.
-    // Chess.js history({verbose: true}) gives captured pieces.
+    // Calculate material difference
+    const currentFen = game.fen();
+    const boardPart = currentFen.split(' ')[0];
     
-    const history = game.history({ verbose: true });
-    const capturedW = []; // Captured by White (Black pieces)
-    const capturedB = []; // Captured by Black (White pieces)
+    // Count current pieces
+    const currentCounts = {
+        'p': 0, 'n': 0, 'b': 0, 'r': 0, 'q': 0, 'k': 0,
+        'P': 0, 'N': 0, 'B': 0, 'R': 0, 'Q': 0, 'K': 0
+    };
     
-    history.forEach(move => {
-        if (move.captured) {
-            if (move.color === 'w') {
-                capturedW.push(move.captured); // White moved and captured Black piece
-            } else {
-                capturedB.push(move.captured); // Black moved and captured White piece
-            }
+    for (let char of boardPart) {
+        if (/[pnbrqkPNBRQK]/.test(char)) {
+            currentCounts[char]++;
         }
+    }
+    
+    // Starting counts
+    const startCounts = {
+        'p': 8, 'n': 2, 'b': 2, 'r': 2, 'q': 1, 'k': 1,
+        'P': 8, 'N': 2, 'B': 2, 'R': 2, 'Q': 1, 'K': 1
+    };
+    
+    const capturedW = []; // Captured by White (Black pieces missing)
+    const capturedB = []; // Captured by Black (White pieces missing)
+    
+    // Check Black pieces missing (captured by White)
+    ['p', 'n', 'b', 'r', 'q', 'k'].forEach(p => {
+        const diff = startCounts[p] - currentCounts[p];
+        for (let i = 0; i < diff; i++) capturedW.push(p);
+    });
+    
+    // Check White pieces missing (captured by Black)
+    ['P', 'N', 'B', 'R', 'Q', 'K'].forEach(p => {
+        const diff = startCounts[p] - currentCounts[p];
+        for (let i = 0; i < diff; i++) capturedB.push(p.toLowerCase());
     });
     
     renderCaptures('#captures-white', capturedW, 'b'); // White captured Black pieces
@@ -267,7 +311,7 @@ function renderCaptures(selector, pieces, colorPrefix) {
         // Better: use images from wikipedia theme
         // https://wikimedia.org/api/rest_v1/media/math/render/svg/... no
         // Let's use the same URL as chessboard.js default
-        const imgUrl = `https://chessboardjs.com/img/chesspieces/wikipedia/${colorPrefix.toUpperCase()}${p.toUpperCase()}.png`;
+        const imgUrl = `https://chessboardjs.com/img/chesspieces/wikipedia/${colorPrefix}${p.toUpperCase()}.png`;
         const img = $('<img>').attr('src', imgUrl).addClass('captured-piece');
         
         $container.append(img);
@@ -282,16 +326,16 @@ function updateEval(score) {
     if (score === null || score === undefined) return;
     
     // Clamp score
-    let clamped = Math.max(-1000, Math.min(1000, score));
+    let clamped = Math.max(-2.0, Math.min(2.0, score));
     
     // Normalize to 0-100%
     // 0 -> 50%
-    // 1000 -> 100%
-    // -1000 -> 0%
-    let percent = 50 + (clamped / 20); // 1000/20 = 50. 50+50=100.
+    // 2.0 -> 100%
+    // -2.0 -> 0%
+    let percent = 50 + (clamped * 25); // 2.0 * 25 = 50. 50+50=100.
     
     $('#eval-bar-fill').css('height', percent + '%');
-    $('#eval-score').text(score);
+    $('#eval-score').text(score.toFixed(2));
 }
 
 function resetEval() {
@@ -322,13 +366,18 @@ $('#btn-analysis').on('click', function() {
 
 $('#theme-select').on('change', function() {
     const theme = this.value;
-    const $board = $('#board');
+    const $boardContainer = $('#board');
+    const $boardWrapper = $boardContainer.parent();
     
-    // Remove all theme classes
-    $board.removeClass('theme-classic theme-blue theme-dark theme-wood');
+    // Remove all theme classes from board container
+    $boardContainer.removeClass('theme-classic theme-blue theme-dark theme-wood');
+    $boardWrapper.removeClass('theme-classic theme-blue theme-dark theme-wood');
     
     // Add new theme class
-    $board.addClass('theme-' + theme);
+    $boardContainer.addClass('theme-' + theme);
+    
+    // Force Chessboard.js to redraw by updating position
+    board.position(game.fen());
 });
 
 function highlightMove(from, to) {

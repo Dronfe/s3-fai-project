@@ -8,7 +8,8 @@ from core.movegen import MoveGen
 from search.minimax import search_best_move
 
 try:
-    from neural_network.evaluate import nn_evaluate
+    from core.evaluator import LearnableEvaluator
+    from search.minimax import get_evaluator
     nn_available=True
 except Exception:
     nn_available=False
@@ -27,7 +28,7 @@ class EngineManager:
         self._stop_cleaner=threading.Event()
         self._cleaner_thread = threading.Thread(target=self._session_cleaner_loop, daemon=True) #type: ignore
         self._cleaner_thread.start()
-        logger.info("EngineManager initialized. NN available: %s", nn_available)
+        logger.info("EngineManager initialized. Evaluator available: %s", nn_available)
         
     
     def start_new_game(self):
@@ -96,8 +97,10 @@ class EngineManager:
         eval_score=None 
         
         try:
-            if nn_available:
-                eval_score=nn_evaluate(board=board)
+            # Use global evaluator from search/minimax
+            evaluator = get_evaluator()
+            if evaluator:
+                eval_score = evaluator.evaluate(board)
         except Exception:
             eval_score=None 
             
@@ -138,4 +141,3 @@ class EngineManager:
     def stop(self):
         self._stop_cleaner.set()
         self._cleaner_thread.join(timeout=2.0)
-        
